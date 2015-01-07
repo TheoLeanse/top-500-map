@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+  <meta charset="utf-8">
+  <title>Small Multiple Choropleth Maps</title>
+  <script src="http://d3js.org/d3.v3.min.js"></script>
+  <script src="http://d3js.org/queue.v1.min.js"></script>  
+  <style>
+    html,
+    body {
+        margin: 25;
+        padding: 0;
+    }
+    #vis {
+        width: 100%;
+        /*max-width: 960px;*/
+        margin: 0 auto;
+    }
+    #vis div {
+        float: left;
+        position: relative;
+    }
+    #vis path {
+        fill: #2ca25f;
+        stroke: #FFF;
+        stroke-width: 1px;
+    }
+    #vis p.legend {
+        width: 100%;
+        text-align: center;
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        font-weight: bold;
+        font-size: 11px;
+    }
+  </style>
+</head>
+
+<body>
+	<div id='vis'></div>
+	<script>
+	
+	//reference to: http://blog.webkid.io/multiple-maps-d3/
+
+	var Vis = (function(d3) {
+		var geojson;
+
+		queue()
+			.defer(d3.json, 'world_countries.json')
+			.defer(d3.csv, 'country_date_rmax.csv')
+			.await(visualise);
+
+		var width = 400,
+			height = 250;
+
+		var projection = d3.geo.mercator().scale(80).translate([170, 140]),
+			path = d3.geo.path().projection(projection);
+			opacity = d3.scale.linear()
+				.domain([1170, 136696801.55])
+				.range([0.2, 1]);			
+
+		function visualise(error, countries, data) {
+			var visualisationWrapper = d3.select('#vis');
+
+			// var agg_date = 
+
+			var nested = d3.nest()
+				.key(function(d) {
+					return d.Date; // munges, gouping by date
+				})
+				.rollup(function(leaves) {//leaves will be array of data objects
+					var result = d3.set()
+					leaves.forEach(function(d) {
+						result[d.Country] = +d.Rmax;// add value in form Country: Rmax(int) do we need to do some operation to make country a string?
+					})
+					return result 
+				})
+				.entries(data) // this returns an object. can get Country with nested[0].values[0].Country and Rmax with nested[0].values[0].Rmax -- both strings
+
+			//what do we want to feed the forEach method? work this out then use .rollup to spit that out as our nested object
+			nested.forEach(function(data, i) { // for each row of data, makes a div and calls createMap. But we want to do this with each year, instead.
+				//debugger; //only for years that equal or greater than 2011
+				if (data.key == "01/06/11" || data.key == "01/11/11" || data.key == "01/06/12" || data.key == "01/11/12" || data.key == "01/06/13" || data.key == "01/11/13" || data.key == "01/06/14" || data.key == "01/11/14") {
+					// simply appends a div of prespecified dimensions to the container for each map
+					var wrapper = visualisationWrapper
+						.append('div')
+						.style({
+							width: width + 'px',
+							height: height + 'px'
+						});
+					// each bit of nested that .forEach spools over needs to 
+					createMap(wrapper, countries, data) // calls create map for each row of the original data... so need to munge this down. countries is the geoJSON, data is the CSV
+				};
+			});
+		}
+		//what do we need to pass createMap?? the wrapper; that's OK. the countries (geoJSON); that's OK, too. The data needs to be
+		function createMap(wrapper, geo, data) {
+			wrapper.append('p')
+				.text(data.key)
+				.attr('class', 'legend');
+
+			var svg = wrapper.append('svg')
+				.attr({
+					width: width,
+					height: height
+				});
+
+			function numberWithCommas(x) {
+   	 			return x.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+				}
+			svg.selectAll('path')
+				.data(geo.features)
+				.enter()
+				.append('path')
+				.attr('d', path)
+				.style('opacity', function(d) { // need to dig rmax out of each country and 
+					//if d.properties.name is in data.values, then set var value to its value
+					var value = data.values[d.properties.name]// is this right?
+					if (typeof value == 'number' || value instanceof Number) { // if value is string, return opacity(value), else, return opaciy(0)
+						return opacity(value);
+					} else {
+						return opacity(0.7);
+					}	
+				})
+				.attr('class', function(d) { //class of country
+					return d.properties.name.toLowerCase();
+				})
+				.on('mouseenter', function(d, i) {
+                    notify('.' + d.properties.name.toLowerCase(), 'select')
+                })
+                .on('mouseleave', function(d) {
+                    notify('.' + d.properties.name.toLowerCase(), 'unselect')
+                })
+                .on('select', function(self) {
+                    var geoData = self.data();
+                    self.node().parentNode.parentNode.getElementsByTagName('p')[0].innerHTML = geoData[0].properties.name + ": " + numberWithCommas(data.values[geoData[0].properties.name]);
+                })
+                .on('unselect', function(self) {
+                    self.node().parentNode.parentNode.getElementsByTagName('p')[0].innerHTML = data.key;
+                });
+
+            function notify(selector, eventName) {
+                d3.selectAll(selector)[0].forEach(function(el, i) {
+                    var shape = d3.select(el);
+                    shape.on(eventName)(shape);
+                });
+			};
+		}
+	})(d3);
+	</script>
+	</body>
+	</html>
